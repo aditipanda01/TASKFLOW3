@@ -8,13 +8,17 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const router = useRouter();
 
-  const handleLogin = () => {
-    // Mocked auth
-    if (username === 'admin' && password === 'password') {
-      localStorage.setItem('user', JSON.stringify({ username }));
+  const handleLogin = async () => {
+    if (username.trim() !== '' && password.trim() !== '') {
+      localStorage.setItem('user', username);
+      await fetch('http://localhost:3001/activities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: `User ${username} logged in.` }),
+      });
       router.push('/board');
     } else {
-      alert('Invalid credentials');
+      alert('Please enter a username and password');
     }
   };
 

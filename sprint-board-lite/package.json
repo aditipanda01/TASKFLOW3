@@ -6,10 +6,14 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "json-server": "json-server --watch db.json --port 3001"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
     "framer-motion": "^12.23.12",
+    "json-server": "^1.0.0-beta.3",
     "next": "15.5.2",
     "react": "19.1.0",
     "react-dom": "19.1.0"
