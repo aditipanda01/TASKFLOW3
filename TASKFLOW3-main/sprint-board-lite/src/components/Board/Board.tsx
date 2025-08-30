@@ -26,11 +26,18 @@ const Board = () => {
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
-  const [undoAction, setUndoAction] = useState(null);
+  const [undoAction] = useState(null);
   const [toastTimer, setToastTimer] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const router = useRouter();
+
+  type Task = {
+  id: number | string;
+  title: string;
+  status: "Todo" | "InProgress" | "Done";
+  priority?: string;
+};
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -54,7 +61,7 @@ const Board = () => {
           const data = await response.json();
 
           const grouped = { todo: [], inProgress: [], done: [] };
-          data.forEach((task: any) => {
+          data.forEach((task: Task) => {
             if (task.status === 'Todo') grouped.todo.push(task);
             else if (task.status === 'InProgress') grouped.inProgress.push(task);
             else if (task.status === 'Done') grouped.done.push(task);
