@@ -186,39 +186,46 @@ const Board = () => {
   };
 
   const handleAddTask = async (newTask) => {
-    const user = localStorage.getItem('user');
-    const newTaskId = Date.now();
-    const task = { id: newTaskId, ...newTask };
-    const oldTasks = JSON.parse(JSON.stringify(tasks));
+  const user = localStorage.getItem("user");
+  const newTaskId = Date.now();
+  const task = { id: newTaskId, ...newTask };
+  const oldTasks = JSON.parse(JSON.stringify(tasks));
 
-    setTasks((prev) => ({ ...prev, todo: [task, ...prev.todo] }));
-    setIsAddTaskModalOpen(false);
-
-    const randomNumber = Math.random();
-    if (randomNumber < 0.1) {
-      setTimeout(() => {
-        alert('Failed to add the task. Please try again.');
-        setTasks(oldTasks);
-      }, 1000);
-    } else {
-      try {
-        await fetch('http://localhost:3001/tasks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(task),
-        });
-        await fetch('http://localhost:3001/activities', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ description: `User ${user} created task "${task.title}"` }),
-        });
-      } catch (error) {
-        console.error('Error adding task:', error);
-        setTasks(oldTasks);
-        alert('Failed to add the task. Please try again.');
-      }
-    }
+  // map status to state keys
+  const statusMap: Record<string, keyof typeof tasks> = {
+    Todo: "todo",
+    InProgress: "inProgress",
+    Done: "done",
   };
+
+  const columnKey = statusMap[task.status] || "todo"; // fallback to "todo"
+
+  setTasks((prev) => ({
+    ...prev,
+    [columnKey]: [task, ...(prev[columnKey] || [])],
+  }));
+  setIsAddTaskModalOpen(false);
+
+  try {
+    await fetch("http://localhost:3001/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(task),
+    });
+    await fetch("http://localhost:3001/activities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        description: `User ${user} created task "${task.title}" in ${task.status}`,
+      }),
+    });
+  } catch (error) {
+    console.error("Error adding task:", error);
+    setTasks(oldTasks);
+    alert("Failed to add the task. Please try again.");
+  }
+};
+
 
   const handleLogout = async () => {
     const user = localStorage.getItem('user');

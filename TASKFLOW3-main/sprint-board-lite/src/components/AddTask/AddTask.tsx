@@ -5,6 +5,8 @@ import { useState } from 'react';
 const AddTask = ({ onAddTask, onCancel }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState('Medium');
+  const [status, setStatus] = useState('Todo');
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -12,9 +14,11 @@ const AddTask = ({ onAddTask, onCancel }) => {
       alert('Title is required');
       return;
     }
-    onAddTask({ title, description });
+    onAddTask({ title, description, priority, status });
     setTitle('');
     setDescription('');
+    setPriority('Medium');
+    setStatus('Todo');
   };
 
   return (
@@ -44,6 +48,36 @@ const AddTask = ({ onAddTask, onCancel }) => {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
+          </div>
+          <div className="mb-4">
+            <label htmlFor="priority" className="block text-gray-700 font-bold mb-2">
+              Priority
+            </label>
+            <select
+              id="priority"
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+            >
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+            </select>
+          </div>
+          <div className="mb-4">
+            <label htmlFor="status" className="block text-gray-700 font-bold mb-2">
+              Status
+            </label>
+            <select
+              id="status"
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+            >
+              <option value="Todo">Todo</option>
+              <option value="InProgress">In Progress</option>
+              <option value="Done">Done</option>
+            </select>
           </div>
           <div className="flex items-center justify-between">
             <button
