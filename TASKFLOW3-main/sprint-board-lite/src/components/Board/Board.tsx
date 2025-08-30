@@ -2,8 +2,16 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay, } from '@dnd-kit/core';
-import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+} from '@dnd-kit/core';
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { Column } from './Column';
 import { Item } from './Item';
 import Card from '../Card/Card';
@@ -31,10 +39,12 @@ const Board = () => {
     })
   );
 
+  // ✅ Fetch tasks on mount and group them into columns
   useEffect(() => {
     const user = localStorage.getItem('user');
     if (!user) {
       router.push('/');
+      return;
     }
 
     const fetchTasks = async () => {
@@ -42,20 +52,24 @@ const Board = () => {
         const response = await fetch('http://localhost:3001/tasks');
         if (response.ok) {
           const data = await response.json();
-          setTasks(data);
+
+          const grouped = { todo: [], inProgress: [], done: [] };
+          data.forEach((task: any) => {
+            if (task.status === 'Todo') grouped.todo.push(task);
+            else if (task.status === 'InProgress') grouped.inProgress.push(task);
+            else if (task.status === 'Done') grouped.done.push(task);
+          });
+
+          setTasks(grouped);
         } else {
           console.error('Error fetching tasks: Response not OK');
-          setTasks({ todo: [], inProgress: [], done: [] });
         }
       } catch (error) {
         console.error('Error fetching tasks:', error);
-        setTasks({ todo: [], inProgress: [], done: [] });
       }
     };
 
-    if (user) {
-      fetchTasks();
-    }
+    fetchTasks();
   }, [router]);
 
   const handleDragStart = (event) => {
@@ -65,21 +79,21 @@ const Board = () => {
   const handleDragEnd = async (event) => {
     const { active, over } = event;
     setActiveId(null);
-
     if (!over) return;
 
     const user = localStorage.getItem('user');
 
+    // 🗑 Delete into trash
     if (over.id === 'trash') {
       const sourceColumnId = active.data.current.sortable.containerId;
       const taskId = active.id;
       const taskToDelete = tasks[sourceColumnId].find((t) => t.id === taskId);
       const newItems = { ...tasks };
-      newItems[sourceColumnId] = newItems[sourceColumnId].filter((task) => task.id !== taskId);
+      newItems[sourceColumnId] = newItems[sourceColumnId].filter((t) => t.id !== taskId);
       setTasks(newItems);
 
       try {
-        await fetch(`http://localhost:3001/tasks/${sourceColumnId}/${taskId}`, { method: 'DELETE' });
+        await fetch(`http://localhost:3001/tasks/${taskId}`, { method: 'DELETE' });
         await fetch('http://localhost:3001/activities', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -91,141 +105,103 @@ const Board = () => {
       return;
     }
 
+    // ♻️ Move tasks between columns
     if (active.id !== over.id) {
       const oldTasks = JSON.parse(JSON.stringify(tasks));
       const sourceColumnId = active.data.current.sortable.containerId;
       const destinationColumnId = over.data.current?.sortable.containerId || over.id;
-      const sourceTask = tasks[sourceColumnId].find((task) => task.id === active.id);
+      const sourceTask = tasks[sourceColumnId].find((t) => t.id === active.id);
 
       if (!sourceTask) return;
 
       setTasks((prev) => {
         const newTasks = { ...prev };
-        const sourceColumn = newTasks[sourceColumnId];
-        const destinationColumn = newTasks[destinationColumnId];
-        const sourceIndex = sourceColumn.findIndex((task) => task.id === active.id);
+        const sourceColumn = [...newTasks[sourceColumnId]];
+        const destinationColumn = [...newTasks[destinationColumnId]];
+
+        // remove from source
+        const sourceIndex = sourceColumn.findIndex((t) => t.id === active.id);
         sourceColumn.splice(sourceIndex, 1);
 
-        if (destinationColumnId === over.id) {
-          const overIndex = destinationColumn.findIndex((task) => task.id === over.id);
-          destinationColumn.splice(overIndex, 0, sourceTask);
+        // add to destination
+        if (over.data.current?.sortable.index !== undefined) {
+          destinationColumn.splice(over.data.current.sortable.index, 0, sourceTask);
         } else {
-          const overContainerIndex = over.data.current?.sortable.index;
-          if (overContainerIndex !== undefined) {
-            destinationColumn.splice(overContainerIndex, 0, sourceTask);
-          } else {
-            destinationColumn.push(sourceTask);
-          }
+          destinationColumn.push(sourceTask);
         }
+
+        newTasks[sourceColumnId] = sourceColumn;
+        newTasks[destinationColumnId] = destinationColumn;
 
         return newTasks;
       });
 
-      if (toastTimer) {
-        clearTimeout(toastTimer);
-      }
-
+      // Save after delay
+      if (toastTimer) clearTimeout(toastTimer);
       setToastMessage(`Moved task to ${destinationColumnId}`);
       setShowToast(true);
 
-      const onUndo = async () => {
-        setTasks(oldTasks);
-        setShowToast(false);
-        clearTimeout(newTimer);
-        setToastTimer(null);
+      const newTimer = setTimeout(async () => {
         try {
-          await fetch('http://localhost:3001/tasks', {
-            method: 'PUT',
+          // update status in backend
+          await fetch(`http://localhost:3001/tasks/${sourceTask.id}`, {
+            method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(oldTasks),
+            body: JSON.stringify({ status: destinationColumnId === 'todo' ? 'Todo' : destinationColumnId === 'inProgress' ? 'InProgress' : 'Done' }),
           });
-          const activityResponse = await fetch('http://localhost:3001/activities');
-          if (activityResponse.ok) {
-            const activities = await activityResponse.json();
-            const lastActivity = activities.pop();
-            if (lastActivity && lastActivity.description.includes('moved task')) {
-              await fetch(`http://localhost:3001/activities/${lastActivity.id}`, {
-                method: 'DELETE',
-              });
-            }
+          if (sourceColumnId !== destinationColumnId) {
+            await fetch('http://localhost:3001/activities', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                description: `User ${user} moved task "${sourceTask.title}" from ${sourceColumnId} to ${destinationColumnId}`,
+              }),
+            });
           }
         } catch (error) {
-          console.error('Error reverting task move:', error);
-          alert('Failed to undo the task move. Please refresh the page.');
+          console.error('Error updating tasks:', error);
+          setTasks(oldTasks);
         }
-      };
-
-      setUndoAction(() => onUndo);
-
-      const newTimer = setTimeout(() => {
-        (async () => {
-          try {
-            await fetch('http://localhost:3001/tasks', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(tasks),
-            });
-            if (sourceColumnId !== destinationColumnId) {
-              await fetch('http://localhost:3001/activities', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ description: `User ${user} moved task "${sourceTask.title}" from ${sourceColumnId} to ${destinationColumnId}` }),
-              });
-            }
-          } catch (error) {
-            console.error('Error updating tasks:', error);
-            setTasks(oldTasks);
-            alert('Failed to move the task. Please try again.');
-          }
-        })();
         setShowToast(false);
         setToastTimer(null);
-      }, 5000);
+      }, 3000);
+
       setToastTimer(newTimer);
     }
   };
 
+  // ➕ Add new task
   const handleAddTask = async (newTask) => {
-  const user = localStorage.getItem("user");
-  const newTaskId = Date.now();
-  const task = { id: newTaskId, ...newTask };
-  const oldTasks = JSON.parse(JSON.stringify(tasks));
+    const user = localStorage.getItem('user');
+    const newTaskId = Date.now();
+    const task = { id: newTaskId, ...newTask };
+    const oldTasks = JSON.parse(JSON.stringify(tasks));
 
-  // map status to state keys
-  const statusMap: Record<string, keyof typeof tasks> = {
-    Todo: "todo",
-    InProgress: "inProgress",
-    Done: "done",
+    const statusMap = { Todo: 'todo', InProgress: 'inProgress', Done: 'done' };
+    const columnKey = statusMap[task.status] || 'todo';
+
+    setTasks((prev) => ({
+      ...prev,
+      [columnKey]: [task, ...(prev[columnKey] || [])],
+    }));
+    setIsAddTaskModalOpen(false);
+
+    try {
+      await fetch('http://localhost:3001/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(task),
+      });
+      await fetch('http://localhost:3001/activities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: `User ${user} created task "${task.title}" in ${task.status}` }),
+      });
+    } catch (error) {
+      console.error('Error adding task:', error);
+      setTasks(oldTasks);
+    }
   };
-
-  const columnKey = statusMap[task.status] || "todo"; // fallback to "todo"
-
-  setTasks((prev) => ({
-    ...prev,
-    [columnKey]: [task, ...(prev[columnKey] || [])],
-  }));
-  setIsAddTaskModalOpen(false);
-
-  try {
-    await fetch("http://localhost:3001/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(task),
-    });
-    await fetch("http://localhost:3001/activities", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        description: `User ${user} created task "${task.title}" in ${task.status}`,
-      }),
-    });
-  } catch (error) {
-    console.error("Error adding task:", error);
-    setTasks(oldTasks);
-    alert("Failed to add the task. Please try again.");
-  }
-};
-
 
   const handleLogout = async () => {
     const user = localStorage.getItem('user');
@@ -248,35 +224,28 @@ const Board = () => {
 
   const activeTask = activeId ? getTaskById(activeId) : null;
 
+  // 🔍 Filters
   const filteredTasks = useMemo(() => {
-  let filtered: Record<string, any[]> = {
-    todo: tasks.todo || [],
-    inProgress: tasks.inProgress || [],
-    done: tasks.done || [],
-  };
+    let filtered = { ...tasks };
 
-  if (searchTerm) {
-    filtered = Object.keys(filtered).reduce((acc, columnId) => {
-      acc[columnId] = (filtered[columnId] || []).filter((task) =>
-        task.title?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      return acc;
-    }, {} as Record<string, any[]>);
-  }
+    if (searchTerm) {
+      filtered = Object.keys(filtered).reduce((acc, columnId) => {
+        acc[columnId] = (filtered[columnId] || []).filter((task) =>
+          task.title?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        return acc;
+      }, { todo: [], inProgress: [], done: [] });
+    }
 
-  if (priorityFilter !== 'all') {
-    filtered = Object.keys(filtered).reduce((acc, columnId) => {
-      acc[columnId] = (filtered[columnId] || []).filter(
-        (task) => task.priority === priorityFilter
-      );
-      return acc;
-    }, {} as Record<string, any[]>);
-  }
+    if (priorityFilter !== 'all') {
+      filtered = Object.keys(filtered).reduce((acc, columnId) => {
+        acc[columnId] = (filtered[columnId] || []).filter((t) => t.priority === priorityFilter);
+        return acc;
+      }, { todo: [], inProgress: [], done: [] });
+    }
 
-  return filtered;
-}, [tasks, searchTerm, priorityFilter]);
-
-
+    return filtered;
+  }, [tasks, searchTerm, priorityFilter]);
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -290,42 +259,41 @@ const Board = () => {
               className="mr-4 p-2 border rounded"
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            <select
-              className="mr-4 p-2 border rounded"
-              onChange={(e) => setPriorityFilter(e.target.value)}
-            >
+            <select className="mr-4 p-2 border rounded" onChange={(e) => setPriorityFilter(e.target.value)}>
               <option value="all">All Priorities</option>
               <option value="High">High</option>
               <option value="Medium">Medium</option>
               <option value="Low">Low</option>
             </select>
-            <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-4" onClick={() => setIsAddTaskModalOpen(true)}>
+            <button className="bg-blue-500 text-white px-4 py-2 rounded mr-4" onClick={() => setIsAddTaskModalOpen(true)}>
               Add Task
             </button>
-            <button className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" onClick={handleLogout}>
+            <button className="bg-red-500 text-white px-4 py-2 rounded" onClick={handleLogout}>
               Logout
             </button>
           </div>
         </div>
+
         <div className="grid grid-cols-4 gap-4">
-          <div className="col-span-3">
-            <div className="grid grid-cols-3 gap-4">
-              {Object.keys(filteredTasks).map((columnId) => (
-                <Column key={columnId} id={columnId} items={(filteredTasks[columnId] || []).map((task) => task.id)}>
-                  <h2 className="text-lg font-bold mb-4">{columnId.charAt(0).toUpperCase() + columnId.slice(1)}</h2>
-                  {(filteredTasks[columnId] || []).map((task) => (
-                    <Item key={task.id} id={task.id}>
-                      <Card task={task} />
-                    </Item>
-                  ))}
-                </Column>
-              ))}
-            </div>
+          <div className="col-span-3 grid grid-cols-3 gap-4">
+            {Object.keys(filteredTasks).map((columnId) => (
+              <Column key={columnId} id={columnId} items={(filteredTasks[columnId] || []).map((task) => task.id)}>
+                <h2 className="text-lg font-bold mb-4">
+                  {columnId === 'todo' ? 'Todo' : columnId === 'inProgress' ? 'In Progress' : 'Done'}
+                </h2>
+                {(filteredTasks[columnId] || []).map((task) => (
+                  <Item key={task.id} id={task.id}>
+                    <Card task={task} />
+                  </Item>
+                ))}
+              </Column>
+            ))}
           </div>
           <div className="col-span-1">
             <RecentActivities />
           </div>
         </div>
+
         <DragOverlay>
           {activeTask ? (
             <Item id={activeTask.id}>
@@ -333,6 +301,7 @@ const Board = () => {
             </Item>
           ) : null}
         </DragOverlay>
+
         <div className="fixed bottom-4 right-4">
           <Trash>
             <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center text-white">
@@ -340,6 +309,7 @@ const Board = () => {
             </div>
           </Trash>
         </div>
+
         {isAddTaskModalOpen && (
           <AddTask onAddTask={handleAddTask} onCancel={() => setIsAddTaskModalOpen(false)} />
         )}
