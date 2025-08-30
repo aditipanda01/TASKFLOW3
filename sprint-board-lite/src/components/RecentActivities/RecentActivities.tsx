@@ -9,8 +9,12 @@ const RecentActivities = () => {
     const fetchActivities = async () => {
       try {
         const response = await fetch('http://localhost:3001/activities');
-        const data = await response.json();
-        setActivities(data.slice(0, 5)); // Show the 5 most recent activities
+        if (response.ok) {
+          const data = await response.json();
+          setActivities(data.slice(0, 5)); // Show the 5 most recent activities
+        } else {
+          console.error('Error fetching a server response');
+        }
       } catch (error) {
         console.error('Error fetching activities:', error);
       }

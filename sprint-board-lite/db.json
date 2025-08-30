@@ -1,15 +1,14 @@
 {
-  "tasks": {
-    "todo": [
-      { "id": 1, "title": "Task 1", "description": "This is a task", "priority": "High" },
-      { "id": 2, "title": "Task 2", "description": "This is another task", "priority": "Medium" }
-    ],
-    "inProgress": [
-      { "id": 3, "title": "Task 3", "description": "This is a task in progress", "priority": "Low" }
-    ],
-    "done": [
-      { "id": 4, "title": "Task 4", "description": "This is a completed task", "priority": "High" }
-    ]
-  },
+  "tasks": [
+    {
+      "id": "1",
+      "title": "Wire nav",
+      "description": "Sketch top nav",
+      "status": "todo",
+      "priority": "medium",
+      "createdAt": "2025-01-01T10:00:00Z",
+      "updatedAt": "2025-01-01T10:00:00Z"
+    }
+  ],
   "activities": []
 }

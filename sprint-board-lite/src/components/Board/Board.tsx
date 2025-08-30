@@ -40,10 +40,16 @@ const Board = () => {
     const fetchTasks = async () => {
       try {
         const response = await fetch('http://localhost:3001/tasks');
-        const data = await response.json();
-        setTasks(data);
+        if (response.ok) {
+          const data = await response.json();
+          setTasks(data);
+        } else {
+          console.error('Error fetching tasks: Response not OK');
+          setTasks({ todo: [], inProgress: [], done: [] });
+        }
       } catch (error) {
         console.error('Error fetching tasks:', error);
+        setTasks({ todo: [], inProgress: [], done: [] });
       }
     };
 
@@ -134,12 +140,14 @@ const Board = () => {
             body: JSON.stringify(oldTasks),
           });
           const activityResponse = await fetch('http://localhost:3001/activities');
-          const activities = await activityResponse.json();
-          const lastActivity = activities.pop();
-          if (lastActivity && lastActivity.description.includes('moved task')) {
-            await fetch(`http://localhost:3001/activities/${lastActivity.id}`, {
-              method: 'DELETE',
-            });
+          if (activityResponse.ok) {
+            const activities = await activityResponse.json();
+            const lastActivity = activities.pop();
+            if (lastActivity && lastActivity.description.includes('moved task')) {
+              await fetch(`http://localhost:3001/activities/${lastActivity.id}`, {
+                method: 'DELETE',
+              });
+            }
           }
         } catch (error) {
           console.error('Error reverting task move:', error);
@@ -291,9 +299,9 @@ const Board = () => {
           <div className="col-span-3">
             <div className="grid grid-cols-3 gap-4">
               {Object.keys(filteredTasks).map((columnId) => (
-                <Column key={columnId} id={columnId} items={filteredTasks[columnId].map((task) => task.id)}>
+                <Column key={columnId} id={columnId} items={(filteredTasks[columnId] || []).map((task) => task.id)}>
                   <h2 className="text-lg font-bold mb-4">{columnId.charAt(0).toUpperCase() + columnId.slice(1)}</h2>
-                  {filteredTasks[columnId].map((task) => (
+                  {(filteredTasks[columnId] || []).map((task) => (
                     <Item key={task.id} id={task.id}>
                       <Card task={task} />
                     </Item>
